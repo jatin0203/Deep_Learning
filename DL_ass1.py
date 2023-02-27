@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[8]:
+# In[16]:
 
 
 class FeedForwardNN:
@@ -416,7 +416,85 @@ class FeedForwardNN:
         return trainingLoss,accuracytrain,accuracytest
         
     def _nag(self):
-        return 
+        Gamma=self.gamma
+        epochs=self.epochs
+        L=self.noOfHL+1
+        k=self.noOfClass
+        x_train=self.x_train
+        y_train=self.y_train
+        eta=self.learningRate
+        batchSize=self.batchSize
+        deltaw=[]
+        deltab=[]
+        prev_w=[0]*(L+1)
+        prev_b=[0]*(L+1)
+        v_w=[0]*(L+1)
+        v_b=[0]*(L+1)
+        prev_w[1:]=[self.W[i] - self.W[i] for i in range(1, L+1)]
+        prev_b[1:]=[self.b[i] - self.b[i] for i in range(1, L+1)]
+        W_l=self.W
+        b_l=self.b
+        trainingLoss=[]
+        t=0
+        for epoch in range(epochs):
+            loss=[]
+            for i in range(x_train.shape[0]):
+                if i!=0:
+                    self.W=temp_w
+                    self.b=temp_b
+                if i%batchSize==0:
+                    if t==0:
+                        self.W[1:] = [self.W[i] - Gamma * prev_w[i] for i in range(1, L+1)]
+                        self.b[1:] = [self.b[i] - Gamma * prev_b[i] for i in range(1, L+1)]
+
+                        t=1
+                    else:
+                        v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
+                        v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
+                        W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
+                        b_l[1:] = [b_l[i] - v_b[i] for i in range(1, L+1)]
+                        prev_w=v_w
+                        prev_b=v_b
+                        
+                        #update params for lookahead
+                        v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
+                        v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
+                        self.W[1:] = [self.W[i] - v_w[i] for i in range(1, L+1)]
+                        self.b[1:] = [self.b[i] - v_b[i] for i in range(1, L+1)]
+                        
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=w_g
+                    deltab=b_g
+                        
+                        
+                else:
+                    v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
+                    v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
+                    self.W[1:] = [self.W[i] - v_w[i] for i in range(1, L+1)]
+                    self.b[1:] = [self.b[i] - v_b[i] for i in range(1, L+1)]
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=self.acc_grad(deltaw,w_g)
+                    deltab=self.acc_grad(deltab,b_g)
+                temp_w=W_l
+                temp_b=b_l
+                self.W=W_l
+                self.b=b_l
+                
+                loss.append(self.calculateLoss(yhat,i))
+            v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
+            v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
+            W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
+            b_l[1:] = [b_l[i] - v_b[i] for i in range(1, L+1)]
+
+            trainingLoss.append(np.mean(loss))
+            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            
+                        
+        accuracytrain=self.calculatetrainAccuracy()
+        accuracytest=self.calculatetestAccuracy()
+        return trainingLoss,accuracytrain,accuracytest
     
     def _rmsProp(self):
         return
@@ -440,7 +518,7 @@ class FeedForwardNN:
         
 
 
-# In[ ]:
+# In[17]:
 
 
 import random
@@ -480,11 +558,11 @@ epochs=10
 noOfHL=2
 lossfunction="CROSS"
 activationFunc="SIGMOID"
-learningRate=0.01
+learningRate=0.1
 batchSize=32
-optimizer="SGD"
+optimizer="NAG"
 gamma=0.9
-initialize="NORMAL"
+initialize="XAVIER"
 
 #creating the object
 FWNN=FeedForwardNN(epochs,noOfHL,NeuronsPL,10,x_train,y_train,x_test,y_test,optimizer,activationFunc,learningRate,batchSize,initialize,lossfunction,gamma)
@@ -508,14 +586,14 @@ plt.figure(figsize=(10,10))
 sns.heatmap(confusion_matrix(y_pred.reshape(60000,),y_train.reshape(60000,)),annot=True)
 
 
-# In[ ]:
+# In[18]:
 
 
 sns.distplot(y_pred)
 sns.distplot(y_train)
 
 
-# In[ ]:
+# In[19]:
 
 
 y_pred=FWNN.calculatetestPredClasses()
@@ -524,7 +602,7 @@ print(y_test.shape[0])
 sns.heatmap(confusion_matrix(y_pred,y_test),annot=True)
 
 
-# In[ ]:
+# In[20]:
 
 
 plt.plot(range(len(loss)),loss)
