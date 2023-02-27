@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[16]:
+# In[1]:
 
 
 class FeedForwardNN:
@@ -21,7 +21,9 @@ class FeedForwardNN:
         batchSize,
         initialize,
         lossfunction,
-        gamma=0.9
+        gamma=0.9,
+        Beta=0.5,
+        epsilon=0.0001
     ):
         self.noOfHL=noOfHL
         self.ListOfNeuronsPL=NeuronsPL
@@ -50,20 +52,22 @@ class FeedForwardNN:
         self.lossfunction=lossfunction
         self.optimizer=self.Optimizers[optimizer]
         self.gamma=gamma
+        self.beta=Beta
+        self.epsilon=epsilon
 
     #returns the weight matrix for the initial configuration, we have used 1 indexing for weights
     def initialize_weights(self):
         weight=[0]*(self.noOfHL+2)
-        if(initialize=="NORMAL"):
+        if(initialize=="RANDOM"):
             for i in range(self.noOfHL+1):
                 if(i==0):
                     continue
                 if(i==1):
-                    w=np.random.normal(0, 1, size=(self.ListOfNeuronsPL[i-1],self.x_train.shape[1]))
+                    w=np.random.uniform(-1, 1, size=(self.ListOfNeuronsPL[i-1],self.x_train.shape[1]))
                 else:
-                    w=np.random.normal(0,1,size=(self.ListOfNeuronsPL[i-1],self.ListOfNeuronsPL[i-2]))
+                    w=np.random.uniform(-1,1,size=(self.ListOfNeuronsPL[i-1],self.ListOfNeuronsPL[i-2]))
                 weight[i]=w
-            w=np.random.normal(0,1,size=(self.noOfClass,self.ListOfNeuronsPL[self.noOfHL-1]))
+            w=np.random.uniform(-1,1,size=(self.noOfClass,self.ListOfNeuronsPL[self.noOfHL-1]))
             weight[self.noOfHL+1]=w
 
         #initialising the weights with xavier
@@ -104,9 +108,9 @@ class FeedForwardNN:
                 if(i==0):
                     continue
                 else:
-                    b=np.random.normal(0, 1, size=(self.ListOfNeuronsPL[i-1]))
+                    b=np.random.uniform(-1, 1, size=(self.ListOfNeuronsPL[i-1]))
                 biases[i]=b
-            b=np.random.normal(0, 1, size=(self.noOfClass))
+            b=np.random.uniform(-1, 1, size=(self.noOfClass))
             biases[self.noOfHL+1]=b
         return biases
     
@@ -497,7 +501,65 @@ class FeedForwardNN:
         return trainingLoss,accuracytrain,accuracytest
     
     def _rmsProp(self):
-        return
+        beta=self.beta
+        L=self.noOfHL+1
+        k=self.noOfClass
+        x_train=self.x_train
+        y_train=self.y_train
+        eta=self.learningRate
+        batchSize=self.batchSize
+        v_w=[0]*(L+1)
+        v_b=[0]*(L+1)
+        deltaw=[]
+        deltab=[]
+        prev_w=[0]*(L+1)
+        prev_b=[0]*(L+1)
+        loss=[]
+        trainingLoss=[]
+        t=0
+        for epoch in range(self.epochs):
+            loss=[]
+            for i in range(x_train.shape[0]):
+                if(i%batchSize==0):
+                    if(i!=0):
+                        #update the weights and biases
+                        if t==0:
+                            v_w[1:]=[(1-beta) * deltaw[i]**2 for i in range(1, L+1)]
+                            v_b[1:]=[(1-beta) * deltab[i]**2 for i in range(1, L+1)]
+                            t=1
+                        else:
+                            v_w[1:]=[beta* prev_w[i] + (1-beta) * deltaw[i]**2 for i in range(1, L+1)]
+                            v_b[1:]=[beta* prev_b[i] + (1-beta) * deltab[i]**2 for i in range(1, L+1)]
+                            
+                        self.W[1:] = [self.W[i] - (eta * deltaw[i]) / batchSize*(v_w[i]+epsilon)**0.5 for i in range(1, L+1)]
+                        self.b[1:] = [self.b[i] - (eta * deltab[i]) / batchSize*(v_b[i]+epsilon)**0.5 for i in range(1, L+1)]
+                        prev_w=v_w
+                        prev_b=v_b
+                            
+                            
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=w_g
+                    deltab=b_g
+                    
+                else:
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=self.acc_grad(deltaw,w_g)
+                    deltab=self.acc_grad(deltab,b_g)
+                    
+                #append loss for this datapoint
+                loss.append(self.calculateLoss(yhat,i))
+
+            self.W[1:] = [self.W[i] - (eta * deltaw[i]) / batchSize*(v_w[i]+epsilon)**0.5 for i in range(1, L+1)]
+            self.b[1:] = [self.b[i] - (eta * deltab[i]) / batchSize*(v_b[i]+epsilon)**0.5 for i in range(1, L+1)]
+            
+            trainingLoss.append(np.mean(loss))
+            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            
+        accuracytrain=self.calculatetrainAccuracy()
+        accuracytest=self.calculatetestAccuracy()
+        return trainingLoss,accuracytrain,accuracytest
     
     def _adam(self):
         return
@@ -518,7 +580,7 @@ class FeedForwardNN:
         
 
 
-# In[17]:
+# In[ ]:
 
 
 import random
@@ -558,14 +620,16 @@ epochs=10
 noOfHL=2
 lossfunction="CROSS"
 activationFunc="SIGMOID"
-learningRate=0.1
+learningRate=1
 batchSize=32
-optimizer="NAG"
+optimizer="RMSPROP"
 gamma=0.9
-initialize="XAVIER"
+initialize="RANDOM"
+Beta=0.75
+epsilon=0.00001
 
 #creating the object
-FWNN=FeedForwardNN(epochs,noOfHL,NeuronsPL,10,x_train,y_train,x_test,y_test,optimizer,activationFunc,learningRate,batchSize,initialize,lossfunction,gamma)
+FWNN=FeedForwardNN(epochs,noOfHL,NeuronsPL,10,x_train,y_train,x_test,y_test,optimizer,activationFunc,learningRate,batchSize,initialize,lossfunction,gamma,Beta,epsilon)
 
 #predicting before training the model
 y_pred=FWNN.calculatetrainPredClasses()
@@ -586,14 +650,14 @@ plt.figure(figsize=(10,10))
 sns.heatmap(confusion_matrix(y_pred.reshape(60000,),y_train.reshape(60000,)),annot=True)
 
 
-# In[18]:
+# In[ ]:
 
 
 sns.distplot(y_pred)
 sns.distplot(y_train)
 
 
-# In[19]:
+# In[ ]:
 
 
 y_pred=FWNN.calculatetestPredClasses()
@@ -602,7 +666,7 @@ print(y_test.shape[0])
 sns.heatmap(confusion_matrix(y_pred,y_test),annot=True)
 
 
-# In[20]:
+# In[ ]:
 
 
 plt.plot(range(len(loss)),loss)
