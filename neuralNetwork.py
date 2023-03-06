@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[4]:
 
 
+import wandb
+import random
+import numpy as np
 class FeedForwardNN:
     def __init__(
         self,
@@ -13,6 +16,8 @@ class FeedForwardNN:
         noOfClass,
         X_train,
         y_train,
+        x_valid,
+        y_valid,
         x_test,
         y_test,
         optimizer,
@@ -23,13 +28,17 @@ class FeedForwardNN:
         lossfunction,
         gamma=0.9,
         Beta=0.5,
+        Beta1=0.9,
+        Beta2=0.999,
         epsilon=0.0001
     ):
         self.noOfHL=noOfHL
-        self.ListOfNeuronsPL=NeuronsPL
+        self.NeuronsPL=NeuronsPL
         self.noOfClass=noOfClass
         self.x_train=x_train
         self.y_train=y_train
+        self.x_valid=x_valid
+        self.y_valid=y_valid
         self.x_test=x_test
         self.y_test=y_test
         self.activationfunction=activationfunction
@@ -53,6 +62,8 @@ class FeedForwardNN:
         self.optimizer=self.Optimizers[optimizer]
         self.gamma=gamma
         self.beta=Beta
+        self.Beta1=Beta1
+        self.Beta2=Beta2
         self.epsilon=epsilon
 
     #returns the weight matrix for the initial configuration, we have used 1 indexing for weights
@@ -63,11 +74,11 @@ class FeedForwardNN:
                 if(i==0):
                     continue
                 if(i==1):
-                    w=np.random.uniform(-1, 1, size=(self.ListOfNeuronsPL[i-1],self.x_train.shape[1]))
+                    w=np.random.uniform(-1, 1, size=(self.NeuronsPL,self.x_train.shape[1]))
                 else:
-                    w=np.random.uniform(-1,1,size=(self.ListOfNeuronsPL[i-1],self.ListOfNeuronsPL[i-2]))
+                    w=np.random.uniform(-1,1,size=(self.NeuronsPL,self.NeuronsPL))
                 weight[i]=w
-            w=np.random.uniform(-1,1,size=(self.noOfClass,self.ListOfNeuronsPL[self.noOfHL-1]))
+            w=np.random.uniform(-1,1,size=(self.noOfClass,self.NeuronsPL))
             weight[self.noOfHL+1]=w
 
         #initialising the weights with xavier
@@ -76,16 +87,16 @@ class FeedForwardNN:
                 if(i==0):
                     continue
                 if(i==1):
-                    ni=self.ListOfNeuronsPL[i-1]
+                    ni=self.NeuronsPL
                     no=self.x_train.shape[1]
                     w=np.random.uniform(-(6/(ni+no))**0.5,(6/(ni+no))**0.5,size=(ni,no))
                 else:
-                    ni=self.ListOfNeuronsPL[i-1]
-                    no=self.ListOfNeuronsPL[i-2]
+                    ni=self.NeuronsPL
+                    no=self.NeuronsPL
                     w=np.random.uniform(-(6/(ni+no))**0.5,(6/(ni+no))**0.5,size=(ni,no))
                 weight[i]=w
             ni=self.noOfClass
-            no=self.ListOfNeuronsPL[self.noOfHL-1]
+            no=self.NeuronsPL
             w=np.random.uniform(-(6/(ni+no))**0.5,(6/(ni+no))**0.5,size=(ni,no))
             weight[self.noOfHL+1]=w
         return weight
@@ -98,7 +109,7 @@ class FeedForwardNN:
                 if(i==0):
                     continue
                 else:
-                    b=np.random.uniform(-(6/(self.ListOfNeuronsPL[i-1]+1))**0.5,(6/(self.ListOfNeuronsPL[i-1]+1))**0.5,size=(self.ListOfNeuronsPL[i-1]))
+                    b=np.random.uniform(-(6/(self.NeuronsPL+1))**0.5,(6/(self.NeuronsPL+1))**0.5,size=(self.NeuronsPL))
                 biases[i]=b
             b=np.random.uniform(-(6/(self.noOfClass+1))**0.5,(6/(self.noOfClass+1))**0.5,size=(self.noOfClass))
             biases[self.noOfHL+1]=b
@@ -108,7 +119,7 @@ class FeedForwardNN:
                 if(i==0):
                     continue
                 else:
-                    b=np.random.uniform(-1, 1, size=(self.ListOfNeuronsPL[i-1]))
+                    b=np.random.uniform(-1, 1, size=(self.NeuronsPL))
                 biases[i]=b
             b=np.random.uniform(-1, 1, size=(self.noOfClass))
             biases[self.noOfHL+1]=b
@@ -269,38 +280,51 @@ class FeedForwardNN:
             return self.crossEntropy(yhat,i)
     
     
-    def calculatetrainPredClasses(self):
+    def calculatePredClasses(self,set_name):
         y_pred=[]
-        for i in range(self.x_train.shape[0]):
-            H,A,yhat=self.forwardPropogation(x_train[i])
-            j=np.argmax(yhat)
-            y_pred.append(j)
-        y_pred=np.array(y_pred)
-        return y_pred
-    def calculatetestPredClasses(self):
-        y_pred=[]
-        for i in range(self.x_test.shape[0]):
-            H,A,yhat=self.forwardPropogation(x_test[i])
-            j=np.argmax(yhat)
-            y_pred.append(j)
+        if(set_name=="train"):
+            for i in range(self.x_train.shape[0]):
+                H,A,yhat=self.forwardPropogation(x_train[i])
+                j=np.argmax(yhat)
+                y_pred.append(j)
+        elif(set_name=="test"):
+            for i in range(self.x_test.shape[0]):
+                H,A,yhat=self.forwardPropogation(x_test[i])
+                j=np.argmax(yhat)
+                y_pred.append(j)
+        elif(set_name=="validation"):
+            for i in range(self.x_valid.shape[0]):
+                H,A,yhat=self.forwardPropogation(x_valid[i])
+                j=np.argmax(yhat)
+                y_pred.append(j)
         y_pred=np.array(y_pred)
         return y_pred
             
-    def calculatetrainAccuracy(self):
-        y_pred=self.calculatetrainPredClasses()
+    def calculateAccuracy(self,set_name):
+        if(set_name=="train"):
+            y_pred=self.calculatePredClasses("train")
+            n=y_train.shape[0]
+        elif(set_name=="test"):
+            y_pred=self.calculatePredClasses("test")
+            n=y_test.shape[0]
+        elif(set_name=="validation"):
+            y_pred=self.calculatePredClasses("validation")
+            n=y_valid.shape[0]
         count=0;
-        for i in range(y_train.shape[0]):
-            if y_pred[i]==y_train[i]:
-                count+=1
-        return ((count/y_train.shape[0])*100)
-    def calculatetestAccuracy(self):
-        y_pred=self.calculatetestPredClasses()
-        count=0;
-        for i in range(y_test.shape[0]):
-            if y_pred[i]==y_test[i]:
-                count+=1
-        return ((count/y_test.shape[0])*100)
-        
+        if(set_name=="train"):
+            for i in range(y_train.shape[0]):
+                if y_pred[i]==y_train[i]:
+                    count+=1
+        elif(set_name=="test"):
+            for i in range(y_test.shape[0]):
+                if y_pred[i]==y_test[i]:
+                    count+=1
+        elif(set_name=="validation"):
+            for i in range(y_valid.shape[0]):
+                if y_pred[i]==y_valid[i]:
+                    count+=1
+        return ((count/n)*100)
+
         
     #Optimizers from here
     def _sgd(self):
@@ -315,6 +339,8 @@ class FeedForwardNN:
         deltab=[]
         loss=[]
         trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
         for epoch in range(epochs):
             loss=[]
             for i in range(x_train.shape[0]):
@@ -350,14 +376,18 @@ class FeedForwardNN:
 #                   self.updateBiases(eta,deltab)
             self.b[1:] = [self.b[i] - eta * deltab[i] for i in range(1, L+1)]
             trainingLoss.append(np.mean(loss))
-            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
 #             plt.bar(range(len(predClasses)),predClasses)
 #             plt.title('No of data per class')
 #             plt.xlabel('Class')
 #             plt.ylabel('count')
 #             plt.show()
-        accuracytrain=self.calculatetrainAccuracy()
-        accuracytest=self.calculatetestAccuracy()
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
         return trainingLoss,accuracytrain,accuracytest
     def _mgd(self):
         Gamma=self.gamma
@@ -374,6 +404,8 @@ class FeedForwardNN:
         prev_b=[0]*(L+1)
         loss=[]
         trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
         t=0
         for epoch in range(epochs):
             loss=[]
@@ -413,10 +445,14 @@ class FeedForwardNN:
             self.b[1:] = [self.b[i] - Gamma * prev_b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
             
             trainingLoss.append(np.mean(loss))
-            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
-        accuracytrain=self.calculatetrainAccuracy()
-        accuracytest=self.calculatetestAccuracy()
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
         return trainingLoss,accuracytrain,accuracytest
         
     def _nag(self):
@@ -439,6 +475,8 @@ class FeedForwardNN:
         W_l=self.W
         b_l=self.b
         trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
         t=0
         for epoch in range(epochs):
             loss=[]
@@ -450,9 +488,9 @@ class FeedForwardNN:
                     if t==0:
                         self.W[1:] = [self.W[i] - Gamma * prev_w[i] for i in range(1, L+1)]
                         self.b[1:] = [self.b[i] - Gamma * prev_b[i] for i in range(1, L+1)]
-
                         t=1
                     else:
+                        #Update real W and bs
                         v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
                         v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
                         W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
@@ -461,8 +499,8 @@ class FeedForwardNN:
                         prev_b=v_b
                         
                         #update params for lookahead
-                        v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
-                        v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
+#                         v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
+#                         v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
                         self.W[1:] = [self.W[i] - v_w[i] for i in range(1, L+1)]
                         self.b[1:] = [self.b[i] - v_b[i] for i in range(1, L+1)]
                         
@@ -473,10 +511,10 @@ class FeedForwardNN:
                         
                         
                 else:
-                    v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
-                    v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
-                    self.W[1:] = [self.W[i] - v_w[i] for i in range(1, L+1)]
-                    self.b[1:] = [self.b[i] - v_b[i] for i in range(1, L+1)]
+#                     v_w[1:] = [Gamma * prev_w[i] for i in range(1, L+1)]
+#                     v_b[1:] = [Gamma * prev_b[i] for i in range(1, L+1)]
+#                     self.W[1:] = [self.W[i] - v_w[i] for i in range(1, L+1)]
+#                     self.b[1:] = [self.b[i] - v_b[i] for i in range(1, L+1)]
                     Hs,As,yhat=self.forwardPropogation(x_train[i])
                     w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
                     deltaw=self.acc_grad(deltaw,w_g)
@@ -493,11 +531,15 @@ class FeedForwardNN:
             b_l[1:] = [b_l[i] - v_b[i] for i in range(1, L+1)]
 
             trainingLoss.append(np.mean(loss))
-            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
                         
-        accuracytrain=self.calculatetrainAccuracy()
-        accuracytest=self.calculatetestAccuracy()
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
         return trainingLoss,accuracytrain,accuracytest
     
     def _rmsProp(self):
@@ -516,6 +558,8 @@ class FeedForwardNN:
         prev_b=[0]*(L+1)
         loss=[]
         trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
         t=0
         for epoch in range(self.epochs):
             loss=[]
@@ -555,17 +599,201 @@ class FeedForwardNN:
             self.b[1:] = [self.b[i] - (eta * deltab[i]) / batchSize*(v_b[i]+epsilon)**0.5 for i in range(1, L+1)]
             
             trainingLoss.append(np.mean(loss))
-            print("The loss after epoch:{} is {}".format(epoch,trainingLoss[epoch]))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
-        accuracytrain=self.calculatetrainAccuracy()
-        accuracytest=self.calculatetestAccuracy()
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
         return trainingLoss,accuracytrain,accuracytest
     
     def _adam(self):
-        return
+        Beta1=self.Beta1;
+        Beta2=self.Beta2;
+        epochs=self.epochs
+        L=self.noOfHL+1
+        k=self.noOfClass
+        x_train=self.x_train
+        y_train=self.y_train
+        eta=self.learningRate
+        batchSize=self.batchSize
+        deltaw=[]
+        deltab=[]
+        v_w=[0]*(L+1)
+        v_b=[0]*(L+1)
+        m_w=[0]*(L+1)
+        m_b=[0]*(L+1)
+        v_w_hat=[0]*(L+1)
+        v_b_hat=[0]*(L+1)
+        m_w_hat=[0]*(L+1)
+        m_b_hat=[0]*(L+1)
+        loss=[]
+        trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
+        t=1
+        for epoch in range(epochs):
+            loss=[]
+            for i in range(x_train.shape[0]):
+                if(i%batchSize==0):
+                    if(i!=0):
+                        #update the weights and biases
+                        if t==1:
+                            m_w[1:] = [(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
+                            m_b[1:] = [(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
+                            v_w[1:]=[(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
+                            v_b[1:]=[(1-Beta2)*np.multiply(deltab[i]/batchSize,deltab[i]/batchSize) for i in range(1, L+1)]
+                            
+                            m_w_hat[1:]=[m_w[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)]
+                            m_b_hat[1:]=[m_b[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)]
+                            v_w_hat[1:]=[v_w[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            v_b_hat[1:]=[v_b[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            
+                            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+                            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+                            t+=1
+                        else:
+                            m_w[1:] = [Beta1*m_w[i]+(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
+                            m_b[1:] = [Beta1*m_b[i]+(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
+                            v_w[1:] = [Beta2*v_w[i]+(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
+                            v_b[1:] = [Beta2*v_b[i]+(1-Beta2)*np.multiply(deltab[i]/batchSize,deltab[i]/batchSize) for i in range(1, L+1)]
+                            
+                            m_w_hat[1:]=[m_w[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)]
+                            m_b_hat[1:]=[m_b[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)] 
+                            v_w_hat[1:]=[v_w[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            v_b_hat[1:]=[v_b[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            
+                            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+                            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+                            t+=1
+                            
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=w_g
+                    deltab=b_g
+                else:
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=self.acc_grad(deltaw,w_g)
+                    deltab=self.acc_grad(deltab,b_g)
+                    
+                #append loss for this datapoint
+                loss.append(self.calculateLoss(yhat,i))
+
+            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+            
+            trainingLoss.append(np.mean(loss))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
+        return trainingLoss,accuracytrain,accuracytest
         
     def _nadam(self):
-        return
+        Beta1=self.Beta1;
+        Beta2=self.Beta2;
+        epochs=self.epochs
+        L=self.noOfHL+1
+        k=self.noOfClass
+        x_train=self.x_train
+        y_train=self.y_train
+        eta=self.learningRate
+        batchSize=self.batchSize
+        deltaw=[]
+        deltab=[]
+        v_w=[0]*(L+1)
+        v_b=[0]*(L+1)
+        m_w=[0]*(L+1)
+        m_b=[0]*(L+1)
+        v_w_hat=[0]*(L+1)
+        v_b_hat=[0]*(L+1)
+        m_w_hat=[0]*(L+1)
+        m_b_hat=[0]*(L+1)
+        W_l=self.W
+        b_l=self.b
+        loss=[]
+        trainingLoss=[]
+        trainingaccuracy=[]
+        validationaccuracy=[]
+        t=0
+        for epoch in range(epochs):
+            loss=[]
+            for i in range(x_train.shape[0]):
+                if i!=0:
+                    self.W=temp_w
+                    self.b=temp_b
+                if(i%batchSize==0):
+                    if(i!=0):
+                        #update the weights and biases
+                        if t==0:
+                            m_w[1:] = [(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
+                            m_b[1:] = [(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
+                            v_w[1:]=[(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
+                            v_b[1:]=[(1-Beta2)*np.multiply(deltab[i]/batchSize,deltab[i]/batchSize) for i in range(1, L+1)]
+                            
+                            m_w_hat[1:]=[m_w[i]/(1-np.power(Beta1,1)) for i in range(1, L+1)]
+                            m_b_hat[1:]=[m_b[i]/(1-np.power(Beta1,1)) for i in range(1, L+1)]
+                            v_w_hat[1:]=[v_w[i]/(1-np.power(Beta2,1)) for i in range(1, L+1)]
+                            v_b_hat[1:]=[v_b[i]/(1-np.power(Beta2,1)) for i in range(1, L+1)]
+                            
+                            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+                            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+                            t+=1
+                        else:
+                            m_w[1:] = [Beta1*m_w[i]+(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
+                            m_b[1:] = [Beta1*m_b[i]+(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
+                            v_w[1:] = [Beta2*v_w[i]+(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
+                            v_b[1:] = [Beta2*v_b[i]+(1-Beta2)*np.multiply(deltab[i]/batchSize,deltab[i]/batchSize) for i in range(1, L+1)]
+                            
+                            m_w_hat[1:]=[m_w[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)]
+                            m_b_hat[1:]=[m_b[i]/(1-np.power(Beta1,t)) for i in range(1, L+1)] 
+                            v_w_hat[1:]=[v_w[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            v_b_hat[1:]=[v_b[i]/(1-np.power(Beta2,t)) for i in range(1, L+1)]
+                            
+                            W_l[1:] = [W_l[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+                            b_l[1:] = [b_l[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+                            #update the lookaheads
+                            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+                            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+                            t+=1
+                            
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=w_g
+                    deltab=b_g
+                else:
+                    Hs,As,yhat=self.forwardPropogation(x_train[i])
+                    w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
+                    deltaw=self.acc_grad(deltaw,w_g)
+                    deltab=self.acc_grad(deltab,b_g)
+                temp_w=W_l
+                temp_b=b_l
+                self.W=W_l
+                self.b=b_l
+                    
+                #append loss for this datapoint
+                loss.append(self.calculateLoss(yhat,i))
+
+            self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+epsilon)) for i in range(1, L+1)]
+            self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+epsilon)) for i in range(1, L+1)]
+            
+            trainingLoss.append(np.mean(loss))
+            accuracytrain=self.calculateAccuracy("train")
+            trainingaccuracy.append(accuracytrain)
+            accuracyvalid=self.calculateAccuracy("validation")
+            validationaccuracy.append(accuracyvalid)
+            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            
+        accuracytrain=self.calculateAccuracy("train")
+        accuracytest=self.calculateAccuracy("test")
+        return trainingLoss,accuracytrain,accuracytest
         
 
         
@@ -614,32 +842,40 @@ x_test=x_test.astype(float);
 x_train=x_train.reshape(60000,784)
 x_test=x_test.reshape(10000,784)
 
+#creating validation set
+num_valid = int(0.1 * x_train.shape[0])  #using 10% of the data as validation test for the model and remaining for train
+x_valid = x_train[:num_valid, :] 
+y_valid = y_train[:num_valid] 
+x_train = x_train[num_valid:, :] 
+y_train = y_train[num_valid:]  
 
-NeuronsPL=[32,32]
+NeuronsPL=32
 epochs=10
 noOfHL=2
 lossfunction="CROSS"
 activationFunc="SIGMOID"
-learningRate=1
+learningRate=0.001
 batchSize=32
-optimizer="RMSPROP"
-gamma=0.9
-initialize="RANDOM"
-Beta=0.75
+optimizer="NADAM"
+gamma=0.8
+initialize="XAVIER"
+Beta=0.7
+Beta1=0.9
+Beta2=0.999
 epsilon=0.00001
 
 #creating the object
-FWNN=FeedForwardNN(epochs,noOfHL,NeuronsPL,10,x_train,y_train,x_test,y_test,optimizer,activationFunc,learningRate,batchSize,initialize,lossfunction,gamma,Beta,epsilon)
+FWNN=FeedForwardNN(epochs,noOfHL,NeuronsPL,10,x_train,y_train,x_valid,y_valid,x_test,y_test,optimizer,activationFunc,learningRate,batchSize,initialize,lossfunction,gamma,Beta,Beta1,Beta2,epsilon)
 
 #predicting before training the model
-y_pred=FWNN.calculatetrainPredClasses()
+y_pred=FWNN.calculatePredClasses("train")
 print(y_pred)
 
 #training the model using sgd
 loss,accuracytrain,accuracytest=FWNN.optimizer()
 print("Accuracy of this model after {} epochs is training accuracy:{} and test accuracy:{}".format(epochs,accuracytrain,accuracytest))
 
-y_pred=FWNN.calculatetrainPredClasses()
+y_pred=FWNN.calculatePredClasses("train")
 print(y_pred)
 print(y_train)
 
@@ -647,7 +883,7 @@ print(y_train)
 plt.figure(figsize=(10,10))
 
 # y_pred = np.array([np.argmax(FNNN.forwardPropogation(i)[2]) for i in range(len(x_train))])
-sns.heatmap(confusion_matrix(y_pred.reshape(60000,),y_train.reshape(60000,)),annot=True)
+sns.heatmap(confusion_matrix(y_pred.reshape(x_train.shape[0],),y_train.reshape(x_train.shape[0],)),annot=True)
 
 
 # In[ ]:
@@ -660,9 +896,7 @@ sns.distplot(y_train)
 # In[ ]:
 
 
-y_pred=FWNN.calculatetestPredClasses()
-print(y_pred.shape[0])
-print(y_test.shape[0])
+y_pred=FWNN.calculatePredClasses("test")
 sns.heatmap(confusion_matrix(y_pred,y_test),annot=True)
 
 
