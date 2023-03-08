@@ -1,18 +1,6 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import wandb
-
-import random
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
 import keras
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
 from keras.datasets import fashion_mnist
 from neuralNetwork import FeedForwardNN
 
@@ -39,13 +27,14 @@ x_test=x_test.reshape(10000,784)
 
 #creating validation set
 num_valid = int(0.1 * x_train.shape[0])  #using 10% of the data as validation test for the model and remaining for train
-x_valid = x_train[:num_valid, :] 
+x_valid = x_train[:num_valid,:] 
 y_valid = y_train[:num_valid] 
 
 x_train = x_train[num_valid:, :] 
 y_train = y_train[num_valid:]  
 
 #defining sweep configuration
+wandb.login()
 sweep_config = {
   "name": "Random Sweep",
   "method": "random",
@@ -76,7 +65,7 @@ sweep_config = {
         },
         
         "learningRate": {
-            "values": [0.1, 0.01, 0.001, 0.0001, 0.00001]
+            "values": [0.1, 0.01, 0.001]
         },
         
         "optimizer": {
@@ -84,21 +73,23 @@ sweep_config = {
         },
                     
         "batchSize": {
-            "values": [16, 32, 64, 128]
+            "values": [32, 64, 128]
+        },
+        "lossfunction":{
+            "values":['CROSS']
         }
         
         
     }
 }
 
-sweep_id = wandb.sweep(sweep_config,project='', entity='')
+sweep_id = wandb.sweep(sweep_config,project='testing1', entity='cs22m048')
 
-def train():
+def train(config=None):
     config_defaults=dict(
         NeuronsPL=32,
         epochs=10,
         noOfHL=2,
-        noofClass=10,
         lossfunction="CROSS",
         activationFunc="SIGMOID",
         learningRate=0.001,
@@ -112,9 +103,9 @@ def train():
         epsilon=0.00001
     )
     
-    wandb.init(config = config_defaults)
+    wandb.init(config = config)
         
-    wandb.run.name = "hl_" + str(wandb.config.noOfHL) + "_hn_" + str(wandb.config.num_hidden_neurons) + "_opt_" + wandb.config.optimizer + "_act_" + wandb.config.activation + "_lr_" + str(wandb.config.learning_rate) + "_bs_"+str(wandb.config.batch_size) + "_init_" + wandb.config.initializer + "_ep_"+ str(wandb.config.max_epochs)+ "_l2_" + str(wandb.config.weight_decay) 
+    wandb.run.name = "HL-" + str(wandb.config.noOfHL) + "Neuron-" + str(wandb.config.NeuronsPL) + "Opt-" + wandb.config.optimizer + "Act-" + wandb.config.activationFunc + "LR-" + str(wandb.config.learningRate) + "BS-"+str(wandb.config.batchSize) + "Init-" + wandb.config.initialize + "Ep-"+ str(wandb.config.epochs) 
     CONFIG = wandb.config
     
     #creating the object
@@ -122,7 +113,6 @@ def train():
         epochs=CONFIG.epochs,
         noOfHL=CONFIG.noOfHL,
         NeuronsPL=CONFIG.NeuronsPL,
-        noofClass=CONFIG.noofClass,
         x_train=x_train,
         y_train=y_train,
         x_valid=x_valid,
@@ -130,28 +120,22 @@ def train():
         x_test=x_test,
         y_test=y_test,
         optimizer=CONFIG.optimizer,
-        activationFunc=CONFIG.activationFunc,
+        activationfunction=CONFIG.activationFunc,
         learningRate=CONFIG.learningRate,
         batchSize=CONFIG.batchSize,
         initialize=CONFIG.initialize,
         lossfunction=CONFIG.lossfunction,
-        gamma=CONFIG.gamma,
-        Beta=CONFIG.Beta,
-        Beta1=CONFIG.Beta1,
-        Beta2=CONFIG.Beta2,
-        epsilon=CONFIG.epsilon
+        gamma=0.9,
+        Beta=0.5,
+        Beta1=0.9,
+        Beta2=0.999,
+        epsilon=0.0001
     )
     
-    #predicting before training the model
-    y_pred=FWNN.calculatePredClasses("train")
-    print(y_pred)
     
     #training the model using sgd
     loss,accuracytrain,accuracytest=FWNN.optimizer()
+    
 
-
-# In[ ]:
-
-
-
+wandb.agent(sweep_id, train, count = 20)
 
