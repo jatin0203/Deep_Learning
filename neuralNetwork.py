@@ -18,6 +18,7 @@ class FeedForwardNN:
         batchSize,
         initialize,
         lossfunction,
+        weightDecay,
         gamma=0.9,
         Beta=0.5,
         Beta1=0.9,
@@ -122,11 +123,8 @@ class FeedForwardNN:
     def tanh(self,x):
         return np.tanh(x)
     
-    def sin(self,x):
-        return np.sin(x)
-    
     def relu(self,x):
-        np.maximum(x,0)
+        return np.maximum(x,0.001)
         
     
     #returns softmax value of a variable x
@@ -144,8 +142,6 @@ class FeedForwardNN:
             return self.relu(A)
         if self.activationfunction=="TANH":
             return self.tanh(A)
-        if self.activationfunction=="SIN":
-            return self.sin(A)
     
     #calculates and returns the predicted values of y using the output Function
     def outputFunc(self,A):
@@ -190,7 +186,11 @@ class FeedForwardNN:
             return g_dash
         if self.activationfunction=="TANH":
             for i in As:
-                g_dash.append( 1 - np.tanh(z) ** 2)
+                g_dash.append( 1 - np.tanh(i) ** 2)
+            return g_dash
+        if self.activationfunction=="RELU":
+            for i in As:
+                g_dash.append((i>0)*1+(i<0)*0.001)
             return g_dash
         
     def backwardPropogation(self,i,Hs,As,yhat,y_train):
@@ -206,21 +206,14 @@ class FeedForwardNN:
             if(i==0):
                 continue
             #gradient of loss wrt to weights at layer k
-            weights_grad[k]=np.outer(preactivation_grad[k],np.transpose(Hs[k-1]))
-#             print("weights_grad wrt loss at level {} is {}".format(k,type(weights_grad[k])))
-            
+            weights_grad[k]=np.outer(preactivation_grad[k],np.transpose(Hs[k-1]))          
             #gradient of loss wrt to biases at layer k
-            biases_grad[k]=preactivation_grad[k]
-#             print("baises_grad wrt loss at level {} is {}".format(k,biases_grad[k].shape))
-            
+            biases_grad[k]=preactivation_grad[k]           
             #for the next layer calculating gradient of loss wrt to activation
             activation_grad[k-1]=np.dot(np.transpose(W[k]),preactivation_grad[k])
-#             print("activation_grad wrt loss at level {} is {}".format(k,activation_grad[k-1].shape))
-            
             #calculate gradient of activation function wrt preactivation of previous layer
             if(k>1):
                 activationFunc_grad=self.cal_activationFunc_grad(As[k-1])
-
                 #for the next layer calculating gradient of loss wrt to preactivation
                 preactivation_grad[k-1]=np.multiply(activation_grad[k-1],activationFunc_grad)
             
@@ -252,23 +245,40 @@ class FeedForwardNN:
     
     #Loss Functions
     
-    def crossEntropy(self,yhat,i):
-        return -1*np.log(yhat[self.y_train[i]])
+    def crossEntropy(self,yhat,i,set_type):
+        if set_type=="train":
+            return -1*np.log(yhat[self.y_train[i]])
+        if set_type=="validation":
+            return -1*np.log(yhat[self.y_valid[i]])
     
-    def meanSquaredError(self,yhat,i):
+    def meanSquaredError(self,yhat,i,set_type):
         MSE=0
-        for j in range(10):
-            if j==self.y_train[i]:
-                MSE+=(yhat[j]-1)**2
-            else:
-                MSE+=(yhat[j])**2
+        if set_type=="train":
+            for j in range(10):
+                if j==self.y_train[i]:
+                    MSE+=(yhat[j]-1)**2
+                else:
+                    MSE+=(yhat[j])**2
+        if set_type=="validation":
+            for j in range(10):
+                if j==self.y_valid[i]:
+                    MSE+=(yhat[j]-1)**2
+                else:
+                    MSE+=(yhat[j])**2
         return MSE/10
+    
+    def L2regularization(self):
+        sum=0
+        L=self.noOfHL+1
+        for i in range(1,L+1):
+            sum+=np.linalg.norm(self.W[i])**2
+        return sum*self.weightDecay
     
     def calculateLoss(self,yhat,i):
         if self.lossfunction=="MSE":
-            return self.meanSquaredError(yhat,i)
+            return self.meanSquaredError(yhat,i,"train")
         if self.lossfunction=="CROSS":
-            return self.crossEntropy(yhat,i)
+            return self.crossEntropy(yhat,i,"train")
     
     
     def calculatePredClasses(self,set_name):
@@ -316,6 +326,15 @@ class FeedForwardNN:
                     count+=1
         return ((count/n)*100)
 
+    def calculateValidationLoss(self):
+        loss=0.0;
+        for i in range(self.x_valid.shape[0]):
+            Hs,As,yhat=self.forwardPropogation(self.x_valid[i])
+            if self.lossfunction=="MSE":
+                loss += self.meanSquaredError(yhat,i,"validation")
+            if self.lossfunction=="CROSS":
+                loss += self.crossEntropy(yhat,i,"validation")
+        return loss/self.x_valid.shape[0];
         
     #Optimizers from here
     def _sgd(self):
@@ -330,6 +349,7 @@ class FeedForwardNN:
         deltab=[]
         loss=[]
         trainingLoss=[]
+        validationLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
         for epoch in range(epochs):
@@ -359,7 +379,7 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
 
                         #update the weights and biases
 #                   self.updateWeights(eta,deltaw)
@@ -371,13 +391,10 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
-#             plt.bar(range(len(predClasses)),predClasses)
-#             plt.title('No of data per class')
-#             plt.xlabel('Class')
-#             plt.ylabel('count')
-#             plt.show()
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+
         accuracytrain=self.calculateAccuracy("train")
         accuracytest=self.calculateAccuracy("test")
         return trainingLoss,accuracytrain,accuracytest
@@ -398,6 +415,7 @@ class FeedForwardNN:
         trainingLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
+        validationLoss=[]
         t=0
         for epoch in range(epochs):
             loss=[]
@@ -431,7 +449,7 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
 
             self.W[1:] = [self.W[i] - Gamma * prev_w[i] - eta * deltaw[i]/batchSize for i in range(1, L+1)]
             self.b[1:] = [self.b[i] - Gamma * prev_b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
@@ -441,8 +459,9 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
         accuracytrain=self.calculateAccuracy("train")
         accuracytest=self.calculateAccuracy("test")
@@ -470,6 +489,7 @@ class FeedForwardNN:
         trainingLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
+        validationLoss=[]
         t=0
         for epoch in range(epochs):
             loss=[]
@@ -517,7 +537,7 @@ class FeedForwardNN:
                 self.W=W_l
                 self.b=b_l
                 
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
             v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
             v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
             W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
@@ -528,8 +548,9 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
                         
         accuracytrain=self.calculateAccuracy("train")
@@ -554,6 +575,7 @@ class FeedForwardNN:
         trainingLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
+        validationLoss=[]
         t=0
         for epoch in range(self.epochs):
             loss=[]
@@ -587,7 +609,7 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
 
             self.W[1:] = [self.W[i] - (eta * deltaw[i]) / batchSize*(v_w[i]+self.epsilon)**0.5 for i in range(1, L+1)]
             self.b[1:] = [self.b[i] - (eta * deltab[i]) / batchSize*(v_b[i]+self.epsilon)**0.5 for i in range(1, L+1)]
@@ -597,8 +619,9 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
         accuracytrain=self.calculateAccuracy("train")
         accuracytest=self.calculateAccuracy("test")
@@ -628,6 +651,7 @@ class FeedForwardNN:
         trainingLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
+        validationLoss=[]
         t=1
         for epoch in range(epochs):
             loss=[]
@@ -675,7 +699,7 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
 
             self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+self.epsilon)) for i in range(1, L+1)]
             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
@@ -685,8 +709,9 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
         accuracytrain=self.calculateAccuracy("train")
         accuracytest=self.calculateAccuracy("test")
@@ -718,6 +743,7 @@ class FeedForwardNN:
         trainingLoss=[]
         trainingaccuracy=[]
         validationaccuracy=[]
+        validationLoss=[]
         t=0
         for epoch in range(epochs):
             loss=[]
@@ -775,7 +801,7 @@ class FeedForwardNN:
                 self.b=b_l
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i))
+                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
 
             self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+self.epsilon)) for i in range(1, L+1)]
             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
@@ -785,8 +811,9 @@ class FeedForwardNN:
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            wandb.log({'loss':trainingLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
-            print("At epoch:{} loss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
+            validationLoss.append(self.calculateValidationLoss());
+            wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
+            print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
         accuracytrain=self.calculateAccuracy("train")
         accuracytest=self.calculateAccuracy("test")

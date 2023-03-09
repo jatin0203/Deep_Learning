@@ -1,5 +1,6 @@
 import wandb
 import numpy as np
+import keras
 from keras.datasets import fashion_mnist
 from neuralNetwork import FeedForwardNN
 
@@ -75,14 +76,14 @@ sweep_config = {
             "values": [32, 64, 128]
         },
         "lossfunction":{
-            "values":['CROSS']
+            "values":['MSE']
         }
         
         
     }
 }
 
-sweep_id = wandb.sweep(sweep_config,project='testing1', entity='cs22m048')
+sweep_id = wandb.sweep(sweep_config,project='msetest', entity='cs22m048')
 
 def train(config=None):
     config_defaults=dict(
