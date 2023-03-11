@@ -35,8 +35,8 @@ y_train = y_train[num_valid:]
 #defining sweep configuration
 wandb.login()
 sweep_config = {
-  "name": "Random Sweep",
-  "method": "random",
+  "name": "bayes Sweep",
+  "method": "bayes",
   "metric":{
   "name": "validationaccuracy",
   "goal": "maximize"
@@ -58,15 +58,19 @@ sweep_config = {
         "NeuronsPL": {
             "values": [32, 64, 128]
         },
-        
+
         "activationFunc": {
             "values": ['RELU','SIGMOID','TANH']
         },
         
         "learningRate": {
-            "values": [0.1, 0.01, 0.001]
+            "values": [0.1, 0.01, 0.001,0.0001]
         },
         
+        "weightDecay": {
+            "values": [0,0.5,0.0005]
+        },
+
         "optimizer": {
             "values": ["SGD", "MGD", "NAG", "RMSPROP", "ADAM","NADAM"]
         },
@@ -92,6 +96,7 @@ def train(config=None):
         lossfunction="CROSS",
         activationFunc="SIGMOID",
         learningRate=0.001,
+        weightDecay=0.0005,
         batchSize=32,
         optimizer="NADAM",
         gamma=0.8,
@@ -104,7 +109,7 @@ def train(config=None):
     
     wandb.init(config = config)
         
-    wandb.run.name = "HL-" + str(wandb.config.noOfHL) + "Neuron-" + str(wandb.config.NeuronsPL) + "Opt-" + wandb.config.optimizer + "Act-" + wandb.config.activationFunc + "LR-" + str(wandb.config.learningRate) + "BS-"+str(wandb.config.batchSize) + "Init-" + wandb.config.initialize + "Ep-"+ str(wandb.config.epochs) 
+    wandb.run.name = "HL-" + str(wandb.config.noOfHL) + "Neuron-" + str(wandb.config.NeuronsPL) + "Opt-" + wandb.config.optimizer + "Act-" + wandb.config.activationFunc + "LR-" + str(wandb.config.learningRate) +"WD-" + str(wandb.config.weightDecay) + "BS-"+str(wandb.config.batchSize) + "Init-" + wandb.config.initialize + "Ep-"+ str(wandb.config.epochs) 
     CONFIG = wandb.config
     
     #creating the object
@@ -121,6 +126,7 @@ def train(config=None):
         optimizer=CONFIG.optimizer,
         activationfunction=CONFIG.activationFunc,
         learningRate=CONFIG.learningRate,
+        weightDecay=CONFIG.weightDecay,
         batchSize=CONFIG.batchSize,
         initialize=CONFIG.initialize,
         lossfunction=CONFIG.lossfunction,
@@ -136,5 +142,5 @@ def train(config=None):
     loss,accuracytrain,accuracytest=FWNN.optimizer()
     
 
-wandb.agent(sweep_id, train, count = 20)
+wandb.agent(sweep_id, train, count = 50)
 

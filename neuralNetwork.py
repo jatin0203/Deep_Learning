@@ -15,10 +15,10 @@ class FeedForwardNN:
         optimizer,
         activationfunction,
         learningRate,
+        weightDecay,
         batchSize,
         initialize,
         lossfunction,
-        weightDecay,
         gamma=0.9,
         Beta=0.5,
         Beta1=0.9,
@@ -36,6 +36,7 @@ class FeedForwardNN:
         self.activationfunction=activationfunction
         self.epochs=epochs
         self.learningRate=learningRate
+        self.weightDecay=weightDecay
         self.batchSize=batchSize
         self.Optimizers={
             "SGD": self._sgd,
@@ -206,7 +207,7 @@ class FeedForwardNN:
             if(i==0):
                 continue
             #gradient of loss wrt to weights at layer k
-            weights_grad[k]=np.outer(preactivation_grad[k],np.transpose(Hs[k-1]))          
+            weights_grad[k]=np.outer(preactivation_grad[k],np.transpose(Hs[k-1]))        
             #gradient of loss wrt to biases at layer k
             biases_grad[k]=preactivation_grad[k]           
             #for the next layer calculating gradient of loss wrt to activation
@@ -334,7 +335,7 @@ class FeedForwardNN:
                 loss += self.meanSquaredError(yhat,i,"validation")
             if self.lossfunction=="CROSS":
                 loss += self.crossEntropy(yhat,i,"validation")
-        return loss/self.x_valid.shape[0];
+        return loss;
         
     #Optimizers from here
     def _sgd(self):
@@ -359,9 +360,10 @@ class FeedForwardNN:
                     if(i!=0):
                         #update the weights and biases
 #                         self.updateWeights(eta,deltaw)
-                        self.W[1:] = [self.W[i] - eta * deltaw[i] for i in range(1, L+1)]
+                        deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
+                        self.W[1:] = [self.W[i] - eta * deltaw[i]/batchSize for i in range(1, L+1)]
 #                         self.updateBiases(eta,deltab)
-                        self.b[1:] = [self.b[i] - eta * deltab[i] for i in range(1, L+1)]
+                        self.b[1:] = [self.b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
                     Hs,As,yhat=self.forwardPropogation(x_train[i])
                     w_g,b_g=self.backwardPropogation(i,Hs,As,yhat,y_train)
 #                     if(i==0):
@@ -379,19 +381,20 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
+                loss.append(self.calculateLoss(yhat,i))
 
                         #update the weights and biases
 #                   self.updateWeights(eta,deltaw)
+            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
             self.W[1:] = [self.W[i] - eta * deltaw[i] for i in range(1, L+1)]
 #                   self.updateBiases(eta,deltab)
             self.b[1:] = [self.b[i] - eta * deltab[i] for i in range(1, L+1)]
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
 
@@ -424,12 +427,14 @@ class FeedForwardNN:
                     if(i!=0):
                         #update the weights and biases
                         if t==0:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             self.W[1:] = [self.W[i] - eta * deltaw[i]/batchSize for i in range(1, L+1)]
                             self.b[1:] = [self.b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
                             prev_w[1:]=[eta*deltaw[i]/batchSize for i in range(1, L+1)]
                             prev_b[1:]=[eta*deltab[i]/batchSize for i in range(1, L+1)]
                             t=1
                         else:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             self.W[1:] = [self.W[i] -  Gamma * prev_w[i] - eta * deltaw[i]/batchSize for i in range(1, L+1)]
                             self.b[1:] = [self.b[i] -  Gamma * prev_b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
                             prev_w[1:]=[Gamma * prev_w[i] + eta*deltaw[i]/batchSize for i in range(1, L+1)]
@@ -449,17 +454,18 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
+                loss.append(self.calculateLoss(yhat,i))
 
+            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
             self.W[1:] = [self.W[i] - Gamma * prev_w[i] - eta * deltaw[i]/batchSize for i in range(1, L+1)]
             self.b[1:] = [self.b[i] - Gamma * prev_b[i] - eta * deltab[i]/batchSize for i in range(1, L+1)]
             
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
@@ -504,6 +510,7 @@ class FeedForwardNN:
                         t=1
                     else:
                         #Update real W and bs
+                        deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                         v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
                         v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
                         W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
@@ -537,18 +544,19 @@ class FeedForwardNN:
                 self.W=W_l
                 self.b=b_l
                 
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
+                loss.append(self.calculateLoss(yhat,i))
+            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
             v_w[1:] = [Gamma * prev_w[i] + eta * deltaw[i]/batchSize for i in range(1, L+1)]
             v_b[1:] = [Gamma * prev_b[i] + eta * deltab[i]/batchSize for i in range(1, L+1)]
             W_l[1:] = [W_l[i] - v_w[i] for i in range(1, L+1)]
             b_l[1:] = [b_l[i] - v_b[i] for i in range(1, L+1)]
 
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
@@ -584,10 +592,12 @@ class FeedForwardNN:
                     if(i!=0):
                         #update the weights and biases
                         if t==0:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             v_w[1:]=[(1-beta) * deltaw[i]**2 for i in range(1, L+1)]
                             v_b[1:]=[(1-beta) * deltab[i]**2 for i in range(1, L+1)]
                             t=1
                         else:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             v_w[1:]=[beta* prev_w[i] + (1-beta) * deltaw[i]**2 for i in range(1, L+1)]
                             v_b[1:]=[beta* prev_b[i] + (1-beta) * deltab[i]**2 for i in range(1, L+1)]
                             
@@ -609,17 +619,17 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
-
+                loss.append(self.calculateLoss(yhat,i))
+            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
             self.W[1:] = [self.W[i] - (eta * deltaw[i]) / batchSize*(v_w[i]+self.epsilon)**0.5 for i in range(1, L+1)]
             self.b[1:] = [self.b[i] - (eta * deltab[i]) / batchSize*(v_b[i]+self.epsilon)**0.5 for i in range(1, L+1)]
             
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
@@ -660,6 +670,7 @@ class FeedForwardNN:
                     if(i!=0):
                         #update the weights and biases
                         if t==1:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             m_w[1:] = [(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
                             m_b[1:] = [(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
                             v_w[1:]=[(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
@@ -674,6 +685,7 @@ class FeedForwardNN:
                             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
                             t+=1
                         else:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             m_w[1:] = [Beta1*m_w[i]+(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
                             m_b[1:] = [Beta1*m_b[i]+(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
                             v_w[1:] = [Beta2*v_w[i]+(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
@@ -699,17 +711,17 @@ class FeedForwardNN:
                     deltab=self.acc_grad(deltab,b_g)
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
+                loss.append(self.calculateLoss(yhat,i))
 
             self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+self.epsilon)) for i in range(1, L+1)]
             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
             
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
@@ -755,6 +767,7 @@ class FeedForwardNN:
                     if(i!=0):
                         #update the weights and biases
                         if t==0:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             m_w[1:] = [(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
                             m_b[1:] = [(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
                             v_w[1:]=[(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
@@ -769,6 +782,7 @@ class FeedForwardNN:
                             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
                             t+=1
                         else:
+                            deltaw[1:]=[deltaw[i]+self.weightDecay*self.W[i] for i in range(1,L+1)]
                             m_w[1:] = [Beta1*m_w[i]+(1-Beta1)* deltaw[i]/batchSize for i in range(1, L+1)]
                             m_b[1:] = [Beta1*m_b[i]+(1-Beta1)* deltab[i]/batchSize for i in range(1, L+1)]
                             v_w[1:] = [Beta2*v_w[i]+(1-Beta2)*np.multiply(deltaw[i]/batchSize,deltaw[i]/batchSize) for i in range(1, L+1)]
@@ -801,17 +815,17 @@ class FeedForwardNN:
                 self.b=b_l
                     
                 #append loss for this datapoint
-                loss.append(self.calculateLoss(yhat,i)+self.L2regularization())
+                loss.append(self.calculateLoss(yhat,i))
 
             self.W[1:] = [self.W[i] -  eta * m_w_hat[i]/(np.sqrt(v_w_hat[i]+self.epsilon)) for i in range(1, L+1)]
             self.b[1:] = [self.b[i] -  eta * m_b_hat[i]/(np.sqrt(v_b_hat[i]+self.epsilon)) for i in range(1, L+1)]
             
-            trainingLoss.append(np.mean(loss))
+            trainingLoss.append((np.sum(loss)+self.L2regularization())/self.x_train.shape[0])
             accuracytrain=self.calculateAccuracy("train")
             trainingaccuracy.append(accuracytrain)
             accuracyvalid=self.calculateAccuracy("validation")
             validationaccuracy.append(accuracyvalid)
-            validationLoss.append(self.calculateValidationLoss());
+            validationLoss.append((self.calculateValidationLoss()+self.L2regularization())/self.x_valid.shape[0]);
             wandb.log({'trainingloss':trainingLoss[epoch],'validationloss':validationLoss[epoch], 'trainingaccuracy':accuracytrain, 'validationaccuracy':accuracyvalid,'epoch':epoch })
             print("At epoch:{} trainingloss: {} Training accuracy: {} validation accuracy: {}".format(epoch,trainingLoss[epoch],accuracytrain,accuracyvalid))
             
