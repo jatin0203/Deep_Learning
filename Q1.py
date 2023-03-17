@@ -40,5 +40,4 @@ for i in range(10):
         Image_name.append(class_name[i])
 
 wandb.init(project='Q1', entity='cs22m048')
-for i in range(10):
-    wandb.log({"Image":wandb.Image(Images[i],caption=Image_name[i])})
+wandb.log({"Image": [wandb.Image(Image,caption=name) for Image,name in zip(Images,Image_name)]})
