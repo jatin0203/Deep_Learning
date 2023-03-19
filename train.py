@@ -11,13 +11,13 @@ from optimizer import Optimizers
 #taking inputs from the command line with format given in the assignment
 def input():
   args = argparse.ArgumentParser(description='CS6910-Assignment 1:')
-  args.add_argument('-wp','--wandb_project', type=str, default = "mnist")
+  args.add_argument('-wp','--wandb_project', type=str, default = "CS6910-Assignment 1")
   args.add_argument('-we','--wandb_entity', type=str, default = "cs22m048")
   args.add_argument('-d','--dataset', type=str, default = "fashion_mnist")
   args.add_argument('-e','--epochs', type=int, default = 15)
-  args.add_argument('-b','--batch_size', type=int, default = 32)
+  args.add_argument('-b','--batch_size', type=int, default = 64)
   args.add_argument('-l','--loss', type=str, default = "cross_entropy")
-  args.add_argument('-o','--optimizer', type=str, default = "adam")
+  args.add_argument('-o','--optimizer', type=str, default = "nadam")
   args.add_argument('-lr','--learning_rate',type=float, default = 0.0001)
   args.add_argument('-m','--momentum',type=float, default = 0.8)
   args.add_argument('-beta','--beta',type=float, default = 0.7)
@@ -26,7 +26,7 @@ def input():
   args.add_argument('-eps','--epsilon',type=float, default = 0.000001)
   args.add_argument('-w_d','--weight_decay',type=float, default =0.0005)
   args.add_argument('-w_i','--weight_init', type=str, default = "Xavier")
-  args.add_argument('-nhl','--num_layers', type=int, default = 2)
+  args.add_argument('-nhl','--num_layers', type=int, default = 4)
   args.add_argument('-sz','--hidden_size', type=int, default = 64)
   args.add_argument('-a','--activation', type=str, default = "ReLU")
 
@@ -113,39 +113,60 @@ sweep_config = {
 sweep_id = wandb.sweep(sweep_config,project=arguments.wandb_project, entity=arguments.wandb_entity)
 #function to plot the confusion matrix on test set
 def plotConfusionMatrix(y_pred):
-    confusion_matrix = np.zeros((10, 10))
+    class_name = [
+        "T-shirt/Top",
+        "Trouser",
+        "Pullover",
+        "Dress",
+        "Coat",
+        "Sandal",
+        "Shirt",
+        "Sneaker",
+        "Bag",
+        "Ankle Boot",
+    ]
+    matrix = np.zeros((10, 10))
+    #calculating entries of 
     for true, pred in zip(y_test, y_pred):
-        confusion_matrix[true,pred] += 1
+        matrix[true,pred] += 1
+
     #defining color gradient to be used in confusion matrix
-    colors = [(0.5, 0.5, 0.5)] + [(i/1000, i/1000, i/1000) for i in range(1, 1001)][::-1]
+    colors = [(0.95, 0.95, 0.95)] + [(i/1000, i/1000, i/1000) for i in range(1, 1001)][::-1]
     color_map = LinearSegmentedColormap.from_list('custom', colors, N=1001)
+
     #defining plot using matplotlib.pyplot
-    fig, ax = plt.subplots()
-    im = ax.imshow(
-        confusion_matrix,
+    fig, ax = plt.subplots(figsize=(10,10))
+    image = ax.imshow(
+        matrix,
         cmap=color_map,
         aspect='auto',
         vmin=0,
         vmax=1000
     )
     #colorbar used for the confusion matrix
-    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar = ax.figure.colorbar(image, ax=ax)
     cbar.ax.set_ylabel('Counts', rotation=-90, va="bottom")
     # Add axis labels
     ax.set_xticks(np.arange(10))
     ax.set_yticks(np.arange(10))
-    ax.set_xticklabels(['{}'.format(i) for i in range(10)])
-    ax.set_yticklabels(['{}'.format(i) for i in range(10)])
+    ax.set_xticklabels(['{}'.format(class_name[i]) for i in range(10)])
+    ax.set_yticklabels(['{}'.format(class_name[i]) for i in range(10)])
     ax.set_xlabel('y_pred')
     ax.set_ylabel('y_test')
+
     # Add text annotations to each cell
     for i in range(10):
         for j in range(10):
-            ax.text(j, i, int(confusion_matrix[i, j]), ha="center", va="center", color="w")
-    ax.set_title("Confusion Matrix")
+            if i==j:
+                ax.text(j, i, int(matrix[i, j]), ha="center", va="center", color="w")
+            else:
+                ax.text(j, i, int(matrix[i, j]), ha="center", va="center", color="k")
+               
+
     plt.tight_layout()
     # Log the confusion matrix plot to WandB
     wandb.log({"confusion_matrix": wandb.Image(fig)})
+
 user="cs22m048"
 project="CS6910-Assignment 1"
 display_name="cs22m048"
