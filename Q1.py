@@ -2,7 +2,6 @@ import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 from keras.datasets import fashion_mnist
-from neuralNetwork import FeedForwardNN
 
 #importing the dataset from keras library
 (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()

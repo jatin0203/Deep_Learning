@@ -1,18 +1,10 @@
 import wandb
-import numpy as np
 from keras.datasets import fashion_mnist
 from neuralNetwork import FeedForwardNN
+from optimizer import Optimizers
 
 #importing the dataset from keras library
 (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
-
-# #one data image per label
-# fig,ax=plt.subplots(nrows=10,figsize=(15,15))
-# for i in range(10):
-#     ax[i].set_title("\n class {} image".format(i))
-#     ax[i].axis("off")
-#     x=x_train[y_train==i]
-#     ax[i].imshow(x[0,:,:],cmap="gray")
 
 #normalizing the data between 0-1
 x_train=x_train/255
@@ -36,7 +28,7 @@ y_train = y_train[num_valid:]
 wandb.login()
 sweep_config = {
   "name": "bayes Sweep",
-  "method": "bayes",
+  "method": "random",
   "metric":{
   "name": "validationaccuracy",
   "goal": "maximize"
@@ -47,7 +39,7 @@ sweep_config = {
         },
 
         "initialize": {
-            "values": ["RANDOM", "XAVIER"]
+            "values": ["random", "Xavier"]
         },
 
         "noOfHL": {
@@ -60,7 +52,7 @@ sweep_config = {
         },
 
         "activationFunc": {
-            "values": ['RELU','SIGMOID','TANH']
+            "values": ['ReLU','sigmoid','tanh']
         },
         
         "learningRate": {
@@ -72,41 +64,23 @@ sweep_config = {
         },
 
         "optimizer": {
-            "values": ["SGD", "MGD", "NAG", "RMSPROP", "ADAM","NADAM"]
+            "values": ["sgd", "momentum", "nag", "rmsprop", "adam","nadam"]
         },
                     
         "batchSize": {
             "values": [32, 64, 128]
         },
         "lossfunction":{
-            "values":['CROSS']
+            "values":['cross_entropy']
         }
         
         
     }
 }
 
-sweep_id = wandb.sweep(sweep_config,project='testing1', entity='cs22m048')
+sweep_id = wandb.sweep(sweep_config,project='test', entity='cs22m048')
 
 def train(config=None):
-    config_defaults=dict(
-        NeuronsPL=32,
-        epochs=10,
-        noOfHL=2,
-        lossfunction="CROSS",
-        activationFunc="SIGMOID",
-        learningRate=0.001,
-        weightDecay=0.0005,
-        batchSize=32,
-        optimizer="NADAM",
-        gamma=0.8,
-        initialize="XAVIER",
-        Beta=0.7,
-        Beta1=0.9,
-        Beta2=0.999,
-        epsilon=0.00001
-    )
-    
     wandb.init(config = config)
         
     wandb.run.name = "HL-" + str(wandb.config.noOfHL) + "Neuron-" + str(wandb.config.NeuronsPL) + "Opt-" + wandb.config.optimizer + "Act-" + wandb.config.activationFunc + "LR-" + str(wandb.config.learningRate) +"WD-" + str(wandb.config.weightDecay) + "BS-"+str(wandb.config.batchSize) + "Init-" + wandb.config.initialize + "Ep-"+ str(wandb.config.epochs) 
@@ -139,8 +113,10 @@ def train(config=None):
     
     
     #training the model using sgd
-    loss,accuracytrain,accuracytest=FWNN.optimizer()
+    Opt=Optimizers()
+    loss,accuracytrain,accuracytest=Opt.optimize(FWNN)
     
 
-wandb.agent(sweep_id, train, count = 50)
+wandb.agent(sweep_id, train, count = 1)
+
 
